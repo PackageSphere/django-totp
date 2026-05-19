@@ -91,7 +91,10 @@ class TotpViewSet(viewsets.GenericViewSet):
     def rotate_backup_codes(self, request):
         """Generate a new backup-code set for the authenticated user."""
 
-        new_codes = rotate_backup_codes(request.user)
+        try:
+            new_codes = rotate_backup_codes(request.user)
+        except ValueError as exc:
+            return Response({"detail": str(exc)}, status=status.HTTP_400_BAD_REQUEST)
 
         response_serializer = self.get_serializer({"backup_codes": new_codes})
 

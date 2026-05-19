@@ -1,10 +1,11 @@
 # Development and testing directories
 prune .github
-prune tests
+prune src/tests
 prune helper_html
 prune dist
 prune build
 prune node_modules
+prune src/django_totp_project
 
 # Virtual environments and caches
 prune .venv
@@ -37,6 +38,7 @@ exclude .coverage
 exclude coverage.xml
 exclude uv.lock
 exclude .python-version
+exclude src/pytest.ini
 
 # Git files
 exclude .gitignore

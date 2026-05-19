@@ -71,4 +71,9 @@ exclude = ["django_totp_project*"]
 local_scheme = "no-local-version"
 
 [dependency-groups]
-dev = ["djoser>=2.3.3", "drf-spectacular>=0.29.0"]
+dev = [
+    "djoser>=2.3.3",
+    "drf-spectacular>=0.29.0",
+    "pytest>=9.0.3",
+    "pytest-django>=4.12.0",
+]
