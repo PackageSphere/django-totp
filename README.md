@@ -3,7 +3,7 @@
 <div align="center">
 
 <a href="https://pypi.org/project/django-totp/">
-    <img src="https://img.shields.io/pypi/v/django-totp?style=for-the-badge&logo=pypi&logoColor=white" alt="PyPI version">
+    <img src="https://img.shields.io/pypi/v/django-totp?style=for-the-badge&logo=pypi&logoColor=white" alt="PyPI Version">
 </a>
 
 <a href="https://pypi.org/project/django-totp/">
@@ -11,15 +11,19 @@
 </a>
 
 <a href="https://www.djangoproject.com/">
-    <img src="https://img.shields.io/badge/Django-5.0+-092E20?style=for-the-badge&logo=django&logoColor=white" alt="Django Versions">
+    <img src="https://img.shields.io/badge/Django-5.0+-092E20?style=for-the-badge&logo=django&logoColor=white" alt="Django">
 </a>
 
 <a href="https://pypi.org/project/django-totp/">
     <img src="https://img.shields.io/pypi/l/django-totp?style=for-the-badge" alt="License">
 </a>
 
+<a href="https://pepy.tech/projects/django-totp">
+    <img src="https://img.shields.io/badge/dynamic/json?style=for-the-badge&label=downloads&query=%24.total_downloads&url=https%3A%2F%2Fpepy.tech%2Fapi%2Fv2%2Fprojects%2Fdjango-totp&color=blue" alt="Downloads">
+</a>
+
 <a href="https://pypi.org/project/django-totp/">
-    <img src="https://img.shields.io/pypi/dm/django-totp?style=for-the-badge&logo=pypi&logoColor=white" alt="Downloads">
+    <img src="https://img.shields.io/pypi/status/django-totp?style=for-the-badge" alt="PyPI Status">
 </a>
 
 <a href="https://djangopackages.org/packages/p/django-totp/">
@@ -40,10 +44,6 @@
 
 <a href="https://docs.astral.sh/ruff/">
     <img src="https://img.shields.io/badge/code%20style-ruff-D7FF64?style=for-the-badge&logo=ruff&logoColor=black" alt="Code Style">
-</a>
-
-<a href="https://pypi.org/project/django-totp/">
-    <img src="https://img.shields.io/pypi/status/django-totp?style=for-the-badge" alt="PyPI Status">
 </a>
 
 </div>
