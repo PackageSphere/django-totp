@@ -1,4 +1,9 @@
-"""Persistence and verification helpers for encrypted backup codes."""
+"""
+django_totp.backup_code_utils
+=============================
+
+Persistence and verification helpers for encrypted backup codes.
+"""
 
 from cryptography.fernet import InvalidToken
 from django.contrib.auth.models import User

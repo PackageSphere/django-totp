@@ -1,4 +1,9 @@
-"""Authentication helpers for 2FA login flow with temporary tokens."""
+"""
+django_totp.auth
+================
+
+Authentication helpers for 2FA login flow with temporary tokens.
+"""
 
 from django.contrib.auth.models import User
 from django.contrib.auth import get_user_model

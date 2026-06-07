@@ -1,4 +1,9 @@
-"""Fernet helpers for encrypting and decrypting TOTP secrets."""
+"""
+django_totp.encryption
+======================
+
+Fernet helpers for encrypting and decrypting TOTP secrets.
+"""
 
 from cryptography.fernet import Fernet
 from django.conf import settings as django_settings

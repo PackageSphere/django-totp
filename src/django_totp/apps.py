@@ -1,4 +1,9 @@
-"""Application configuration for the django_totp package."""
+"""
+django_totp.apps
+================
+
+Application configuration for the django_totp package.
+"""
 
 from django.apps import AppConfig
 

@@ -1,4 +1,9 @@
-"""DRF view layer for TOTP enrollment and verification endpoints."""
+"""
+django_totp.views
+=================
+
+DRF view layer for TOTP enrollment and verification endpoints.
+"""
 
 from django.contrib.auth import authenticate
 from rest_framework import status, viewsets

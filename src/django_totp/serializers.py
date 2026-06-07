@@ -1,4 +1,9 @@
-"""Serializer definitions for the django_totp API layer."""
+"""
+django_totp.serializers
+=======================
+
+Serializer definitions for the django_totp API layer.
+"""
 
 from django.contrib.auth import get_user_model
 from rest_framework import serializers

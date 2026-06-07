@@ -1,4 +1,9 @@
-"""Database models for Django TOTP secrets and backup codes."""
+"""
+django_totp.models
+==================
+
+Database models for Django TOTP secrets and backup codes.
+"""
 
 from django.conf import settings as django_settings
 from django.contrib.auth import get_user_model

@@ -1,4 +1,9 @@
-"""High-level TOTP lifecycle helpers for Django users."""
+"""
+django_totp.totp
+================
+
+High-level TOTP lifecycle helpers for Django users.
+"""
 
 from cryptography.fernet import InvalidToken
 from django.conf import settings as django_settings

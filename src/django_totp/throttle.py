@@ -1,4 +1,9 @@
-"""Throttle configuration for the TOTP API endpoints."""
+"""
+django_totp.throttle
+====================
+
+Throttle configuration for the TOTP API endpoints.
+"""
 
 from django.conf import settings as django_settings
 from rest_framework.throttling import UserRateThrottle, AnonRateThrottle

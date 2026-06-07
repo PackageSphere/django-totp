@@ -1,4 +1,9 @@
-"""URL patterns for TOTP 2FA JWT authentication."""
+"""
+django_totp.urls.jwt
+====================
+
+URL patterns for TOTP 2FA JWT authentication.
+"""
 
 from django.urls import path
 from rest_framework_simplejwt import views

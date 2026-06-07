@@ -1,4 +1,9 @@
-"""Generate plaintext backup codes for TOTP authentication."""
+"""
+django_totp.backup_code
+=======================
+
+Generate plaintext backup codes for TOTP authentication.
+"""
 
 import secrets
 from typing import List
