@@ -1,7 +1,5 @@
 """Fernet helpers for encrypting and decrypting TOTP secrets."""
 
-from functools import lru_cache
-
 from cryptography.fernet import Fernet
 from django.conf import settings as django_settings
 from django.core.exceptions import ImproperlyConfigured
@@ -29,7 +27,7 @@ def resolve_fernet_key(default: str | bytes | None = None) -> bytes:
 
     try:
         Fernet(key)
-    except Exception as exc:  # pragma: no cover - defensive validation
+    except Exception as exc:
         raise ImproperlyConfigured(
             "TOTP_ENCRYPTION_KEY must be a valid Fernet key."
         ) from exc
@@ -37,7 +35,6 @@ def resolve_fernet_key(default: str | bytes | None = None) -> bytes:
     return key
 
 
-@lru_cache(maxsize=1)
 def _get_fernet() -> Fernet:
     """Build the Fernet instance after Django settings are loaded."""
 
