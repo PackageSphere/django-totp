@@ -27,6 +27,13 @@ from .serializers import (
     TotpConfirmRequestSerializer,
     TotpCreateResponseSerializer,
 )
+from .signals import (
+    backup_codes_rotated,
+    totp_confirmed,
+    totp_disabled,
+    totp_login_succeeded,
+    non_totp_login_succeeded,
+)
 from .totp import create_totp_setup, confirm_totp_setup, disable_totp, verify_totp_code
 from .throttle import TotpAnonThrottle, TotpUserThrottle
 
@@ -80,6 +87,10 @@ class TotpViewSet(viewsets.GenericViewSet):
 
         response_serializer = self.get_serializer({"backup_codes": backup_codes})
 
+        totp_confirmed.send_robust(
+            sender=self.__class__, request=request, user=request.user
+        )
+
         return Response(response_serializer.data, status=status.HTTP_200_OK)
 
     @action(detail=False, methods=["post"])
@@ -90,6 +101,10 @@ class TotpViewSet(viewsets.GenericViewSet):
             disable_totp(request.user)
         except ValueError as exc:
             return Response({"detail": str(exc)}, status=status.HTTP_400_BAD_REQUEST)
+
+        totp_disabled.send_robust(
+            sender=self.__class__, request=request, user=request.user
+        )
 
         return Response(status=status.HTTP_204_NO_CONTENT)
 
@@ -103,6 +118,10 @@ class TotpViewSet(viewsets.GenericViewSet):
             return Response({"detail": str(exc)}, status=status.HTTP_400_BAD_REQUEST)
 
         response_serializer = self.get_serializer({"backup_codes": new_codes})
+
+        backup_codes_rotated.send_robust(
+            sender=self.__class__, request=request, user=request.user
+        )
 
         return Response(response_serializer.data, status=status.HTTP_200_OK)
 
@@ -138,6 +157,10 @@ class JWTCreateView(GenericAPIView):
                     "refresh": str(refresh),
                     "access": str(refresh.access_token),
                 }
+            )
+
+            non_totp_login_succeeded.send_robust(
+                sender=self.__class__, request=request, user=user
             )
 
             return Response(
@@ -208,6 +231,10 @@ class JWTTOTP2FAVerifyView(GenericAPIView):
                 "refresh": str(refresh),
                 "access": str(refresh.access_token),
             }
+        )
+
+        totp_login_succeeded.send_robust(
+            sender=self.__class__, request=request, user=user
         )
 
         return Response(
