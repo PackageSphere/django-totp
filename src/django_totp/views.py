@@ -23,14 +23,14 @@ from .serializers import (
     TotpCreateResponseSerializer,
 )
 from .totp import create_totp_setup, confirm_totp_setup, disable_totp, verify_totp_code
-from .throttle import TotpThrottle
+from .throttle import TotpAnonThrottle, TotpUserThrottle
 
 
 class TotpViewSet(viewsets.GenericViewSet):
     """Expose TOTP enrollment, confirmation, and recovery endpoints."""
 
     permission_classes = [IsAuthenticated]
-    throttle_classes = [TotpThrottle]
+    throttle_classes = [TotpUserThrottle]
 
     def get_serializer_class(self):
         """Return the serializer that matches the current action."""
@@ -104,7 +104,7 @@ class TotpViewSet(viewsets.GenericViewSet):
 class JWTCreateView(GenericAPIView):
     permission_classes = [AllowAny]
     serializer_class = JWTCreateSerializer
-    throttle_classes = [TotpThrottle]
+    throttle_classes = [TotpUserThrottle, TotpAnonThrottle]
 
     def post(self, request, *args, **kwargs):
         serializer = self.get_serializer(data=request.data)
@@ -155,7 +155,7 @@ class JWTCreateView(GenericAPIView):
 class JWTTOTP2FAVerifyView(GenericAPIView):
     permission_classes = [AllowAny]
     serializer_class = JWT2FAVerifySerializer
-    throttle_classes = [TotpThrottle]
+    throttle_classes = [TotpUserThrottle, TotpAnonThrottle]
 
     def post(self, request, *args, **kwargs):
 
