@@ -1,8 +1,14 @@
-"""High-level TOTP lifecycle helpers for Django users."""
+"""
+django_totp.totp
+================
+
+High-level TOTP lifecycle helpers for Django users.
+"""
 
 from cryptography.fernet import InvalidToken
 from django.conf import settings as django_settings
 from django.contrib.auth.models import User
+from django.db import transaction, IntegrityError
 
 import pyotp
 from typing import List
@@ -29,12 +35,12 @@ def verify_totp_code(user: User, input_code: str) -> bool:
     allowing for a 30-second clock skew.
     """
 
-    totp_qs = Totp.objects.filter(user=user).first()
-    if not totp_qs:
+    totp = Totp.objects.filter(user=user).first()
+    if not totp:
         raise ValueError("User does not have an associated TOTP secret.")
 
     try:
-        secret = decrypt(totp_qs.secret_key)
+        secret = decrypt(totp.secret_key)
     except InvalidToken:
         # Treat decryption failure as invalid code
         return False
@@ -52,7 +58,13 @@ def create_totp_setup(user: User) -> str:
 
     secret = generate_totp_secret()
 
-    Totp.objects.create(user=user, secret_key=encrypt(secret))
+    try:
+        Totp.objects.create(
+            user=user,
+            secret_key=encrypt(secret),
+        )
+    except IntegrityError:
+        raise ValueError("TOTP already exists for this user.")
 
     uri = pyotp.TOTP(secret).provisioning_uri(
         name=user.get_username(), issuer_name=TOTP_ISSUER
@@ -64,25 +76,27 @@ def create_totp_setup(user: User) -> str:
 def confirm_totp_setup(user: User, input_code: str) -> List[str]:
     """Confirm TOTP enrollment and return freshly generated backup codes."""
 
-    totp_qs = Totp.objects.filter(user=user).first()
-    if not totp_qs:
-        raise ValueError("User does not have an associated TOTP secret.")
+    with transaction.atomic():
+        totp = Totp.objects.select_for_update().filter(user=user).first()
 
-    if BackupCode.objects.filter(totp=totp_qs).exists():
-        raise ValueError("Backup codes already exist for this user.")
+        if not totp:
+            raise ValueError("User does not have an associated TOTP secret.")
 
-    if not verify_totp_code(user, input_code):
-        raise ValueError("Invalid TOTP code.")
+        if BackupCode.objects.filter(totp=totp).exists():
+            raise ValueError("Backup codes already exist for this user.")
 
-    return store_backup_codes(user, generate_backup_codes())
+        if not verify_totp_code(user, input_code):
+            raise ValueError("Invalid TOTP code.")
+
+        return store_backup_codes(user, generate_backup_codes())
 
 
 def disable_totp(user: User) -> None:
     """Remove the user's TOTP secret and any stored backup codes."""
+    with transaction.atomic():
+        totp = Totp.objects.filter(user=user).first()
+        if not totp:
+            raise ValueError("User does not have an associated TOTP secret.")
 
-    totp_qs = Totp.objects.filter(user=user).first()
-    if not totp_qs:
-        raise ValueError("User does not have an associated TOTP secret.")
-
-    BackupCode.objects.filter(totp=totp_qs).delete()
-    totp_qs.delete()
+        BackupCode.objects.filter(totp=totp).delete()
+        totp.delete()

@@ -1,4 +1,9 @@
-"""DRF view layer for TOTP enrollment and verification endpoints."""
+"""
+django_totp.views
+=================
+
+DRF view layer for TOTP enrollment and verification endpoints.
+"""
 
 from django.contrib.auth import authenticate
 from rest_framework import status, viewsets
@@ -22,15 +27,22 @@ from .serializers import (
     TotpConfirmRequestSerializer,
     TotpCreateResponseSerializer,
 )
+from .signals import (
+    backup_codes_rotated,
+    totp_created,
+    totp_disabled,
+    totp_login_succeeded,
+    non_totp_login_succeeded,
+)
 from .totp import create_totp_setup, confirm_totp_setup, disable_totp, verify_totp_code
-from .throttle import TotpThrottle
+from .throttle import TotpAnonThrottle, TotpUserThrottle
 
 
 class TotpViewSet(viewsets.GenericViewSet):
     """Expose TOTP enrollment, confirmation, and recovery endpoints."""
 
     permission_classes = [IsAuthenticated]
-    throttle_classes = [TotpThrottle]
+    throttle_classes = [TotpUserThrottle]
 
     def get_serializer_class(self):
         """Return the serializer that matches the current action."""
@@ -45,6 +57,7 @@ class TotpViewSet(viewsets.GenericViewSet):
             return BackupCodeListSerializer
         return super().get_serializer_class()
 
+    # "enroll" is used due to "create" being reserved for generic viewsets
     @action(detail=False, methods=["post"], url_path="create", url_name="create")
     def enroll(self, request):
         """Start TOTP enrollment and return the provisioning QR code."""
@@ -74,6 +87,10 @@ class TotpViewSet(viewsets.GenericViewSet):
 
         response_serializer = self.get_serializer({"backup_codes": backup_codes})
 
+        totp_created.send_robust(
+            sender=self.__class__, request=request, user=request.user
+        )
+
         return Response(response_serializer.data, status=status.HTTP_200_OK)
 
     @action(detail=False, methods=["post"])
@@ -84,6 +101,10 @@ class TotpViewSet(viewsets.GenericViewSet):
             disable_totp(request.user)
         except ValueError as exc:
             return Response({"detail": str(exc)}, status=status.HTTP_400_BAD_REQUEST)
+
+        totp_disabled.send_robust(
+            sender=self.__class__, request=request, user=request.user
+        )
 
         return Response(status=status.HTTP_204_NO_CONTENT)
 
@@ -98,13 +119,17 @@ class TotpViewSet(viewsets.GenericViewSet):
 
         response_serializer = self.get_serializer({"backup_codes": new_codes})
 
+        backup_codes_rotated.send_robust(
+            sender=self.__class__, request=request, user=request.user
+        )
+
         return Response(response_serializer.data, status=status.HTTP_200_OK)
 
 
 class JWTCreateView(GenericAPIView):
     permission_classes = [AllowAny]
     serializer_class = JWTCreateSerializer
-    throttle_classes = [TotpThrottle]
+    throttle_classes = [TotpUserThrottle, TotpAnonThrottle]
 
     def post(self, request, *args, **kwargs):
         serializer = self.get_serializer(data=request.data)
@@ -134,6 +159,10 @@ class JWTCreateView(GenericAPIView):
                 }
             )
 
+            non_totp_login_succeeded.send_robust(
+                sender=self.__class__, request=request, user=user
+            )
+
             return Response(
                 serializer.data,
                 status=status.HTTP_200_OK,
@@ -155,7 +184,7 @@ class JWTCreateView(GenericAPIView):
 class JWTTOTP2FAVerifyView(GenericAPIView):
     permission_classes = [AllowAny]
     serializer_class = JWT2FAVerifySerializer
-    throttle_classes = [TotpThrottle]
+    throttle_classes = [TotpUserThrottle, TotpAnonThrottle]
 
     def post(self, request, *args, **kwargs):
 
@@ -202,6 +231,10 @@ class JWTTOTP2FAVerifyView(GenericAPIView):
                 "refresh": str(refresh),
                 "access": str(refresh.access_token),
             }
+        )
+
+        totp_login_succeeded.send_robust(
+            sender=self.__class__, request=request, user=user
         )
 
         return Response(

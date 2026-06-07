@@ -1,4 +1,9 @@
-"""Render TOTP provisioning data as inline SVG QR codes."""
+"""
+django_totp.qrsvg
+=================
+
+Render TOTP provisioning data as inline SVG QR codes.
+"""
 
 from io import BytesIO
 
