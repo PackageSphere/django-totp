@@ -50,6 +50,7 @@ class TotpViewSet(viewsets.GenericViewSet):
             return BackupCodeListSerializer
         return super().get_serializer_class()
 
+    # "enroll" is used due to "create" being reserved for generic viewsets
     @action(detail=False, methods=["post"], url_path="create", url_name="create")
     def enroll(self, request):
         """Start TOTP enrollment and return the provisioning QR code."""

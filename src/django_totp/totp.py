@@ -8,7 +8,7 @@ High-level TOTP lifecycle helpers for Django users.
 from cryptography.fernet import InvalidToken
 from django.conf import settings as django_settings
 from django.contrib.auth.models import User
-from django.db import transaction
+from django.db import transaction, IntegrityError
 
 import pyotp
 from typing import List
@@ -58,7 +58,13 @@ def create_totp_setup(user: User) -> str:
 
     secret = generate_totp_secret()
 
-    Totp.objects.create(user=user, secret_key=encrypt(secret))
+    try:
+        Totp.objects.create(
+            user=user,
+            secret_key=encrypt(secret),
+        )
+    except IntegrityError:
+        raise ValueError("TOTP already exists for this user.")
 
     uri = pyotp.TOTP(secret).provisioning_uri(
         name=user.get_username(), issuer_name=TOTP_ISSUER
@@ -70,17 +76,19 @@ def create_totp_setup(user: User) -> str:
 def confirm_totp_setup(user: User, input_code: str) -> List[str]:
     """Confirm TOTP enrollment and return freshly generated backup codes."""
 
-    totp = Totp.objects.filter(user=user).first()
-    if not totp:
-        raise ValueError("User does not have an associated TOTP secret.")
+    with transaction.atomic():
+        totp = Totp.objects.select_for_update().filter(user=user).first()
 
-    if BackupCode.objects.filter(totp=totp).exists():
-        raise ValueError("Backup codes already exist for this user.")
+        if not totp:
+            raise ValueError("User does not have an associated TOTP secret.")
 
-    if not verify_totp_code(user, input_code):
-        raise ValueError("Invalid TOTP code.")
+        if BackupCode.objects.filter(totp=totp).exists():
+            raise ValueError("Backup codes already exist for this user.")
 
-    return store_backup_codes(user, generate_backup_codes())
+        if not verify_totp_code(user, input_code):
+            raise ValueError("Invalid TOTP code.")
+
+        return store_backup_codes(user, generate_backup_codes())
 
 
 def disable_totp(user: User) -> None:

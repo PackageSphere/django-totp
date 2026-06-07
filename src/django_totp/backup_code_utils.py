@@ -74,6 +74,12 @@ def verify_backup_code(user: User, input_code: str) -> bool:
 def rotate_backup_codes(user: User) -> list[str]:
     """Generate and persist a fresh backup-code set for a user."""
 
-    new_codes = generate_backup_codes()
+    with transaction.atomic():
+        totp = Totp.objects.select_for_update().filter(user=user).first()
 
-    return store_backup_codes(user, new_codes)
+        if not totp:
+            raise ValueError("User does not have an associated TOTP secret.")
+
+        new_codes = generate_backup_codes()
+
+        return store_backup_codes(user, new_codes)
