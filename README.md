@@ -213,13 +213,13 @@ All settings below are read from Django settings.
 - Type: string (valid Fernet key)
 - Purpose: Encrypts TOTP secrets and backup codes at rest
 
-If missing or invalid, django-totp raises ImproperlyConfigured.
+  If missing or invalid, django-totp raises ImproperlyConfigured.
 
-```python
-# settings.py
-TOTP_ENCRYPTION_KEY = "your-generated-key"
-# generate with: python -c from django_totp.encryption import generate_fernet_key; print(generate_fernet_key())
-```
+  ```python
+  # settings.py
+  TOTP_ENCRYPTION_KEY = "your-generated-key"
+  # generate with: python -c from django_totp.encryption import generate_fernet_key; print(generate_fernet_key())
+  ```
 
 ### TOTP_ISSUER
 
@@ -228,10 +228,10 @@ TOTP_ENCRYPTION_KEY = "your-generated-key"
 - Type: string
 - Purpose: Issuer label shown in authenticator apps
 
-```python
-# settings.py
-TOTP_ISSUER = "XYZ Platform"
-```
+  ```python
+  # settings.py
+  TOTP_ISSUER = "XYZ Platform"
+  ```
 
 ### TOTP_MAX_BACKUP_CODES
 
@@ -240,10 +240,10 @@ TOTP_ISSUER = "XYZ Platform"
 - Type: integer
 - Purpose: Number of backup codes generated per user set
 
-```python
-# settings.py
-TOTP_MAX_BACKUP_CODES = 12
-```
+  ```python
+  # settings.py
+  TOTP_MAX_BACKUP_CODES = 12
+  ```
 
 ### TOTP_THROTTLE_RATE
 
@@ -252,22 +252,22 @@ TOTP_MAX_BACKUP_CODES = 12
 - Type: DRF throttle rate string
 - Purpose: Rate limit for all django-totp endpoint actions
 
-```python
-# settings.py
-TOTP_THROTTLE_RATE = "5/minute"
-```
+  ```python
+  # settings.py
+  TOTP_THROTTLE_RATE = "5/minute"
+  ```
 
 ### TOTP_TOKEN_SALT
 
-- Required: No
+- Required: True for production and False for development
 - Default: django-totp-token-salt
 - Type: string
 - Purpose: Salt used for signed temporary token helpers
 
-```python
-# settings.py
-TOTP_TOKEN_SALT = "django-totp-token-salt"
-```
+  ```python
+  # settings.py
+  TOTP_TOKEN_SALT = os.getenv("TOTP_TOKEN_SALT")
+  ```
 
 ### TOTP_TOKEN_MAX_AGE
 
@@ -276,24 +276,24 @@ TOTP_TOKEN_SALT = "django-totp-token-salt"
 - Type: integer (seconds)
 - Purpose: Token expiry for signed temporary token helpers
 
-```python
-# settings.py
-TOTP_TOKEN_MAX_AGE = 120
-```
+  ```python
+  # settings.py
+  TOTP_TOKEN_MAX_AGE = 120
+  ```
 
 ### REST_FRAMEWORK JWT Authentication
 
 - Required: No (only if using JWT integration)
 - Purpose: Configure DRF to use JWTAuthentication for protected endpoints
 
-```python
-# settings.py
-REST_FRAMEWORK = {
-    "DEFAULT_AUTHENTICATION_CLASSES": (
-        "rest_framework_simplejwt.authentication.JWTAuthentication",
-    ),
-}
-```
+  ```python
+  # settings.py
+  REST_FRAMEWORK = {
+      "DEFAULT_AUTHENTICATION_CLASSES": (
+          "rest_framework_simplejwt.authentication.JWTAuthentication",
+      ),
+  }
+  ```
 
 ### SIMPLE_JWT Settings
 
@@ -301,19 +301,19 @@ REST_FRAMEWORK = {
 - Purpose: Configure JWT behavior, token lifetimes, rotation, etc.
 - Docs: https://django-rest-framework-simplejwt.readthedocs.io/en/latest/settings.html
 
-```python
-# settings.py
-from datetime import timedelta
+  ```python
+  # settings.py
+  from datetime import timedelta
 
-SIMPLE_JWT = {
-    "AUTH_HEADER_TYPES": ("Bearer",),
-    "ACCESS_TOKEN_LIFETIME": timedelta(minutes=20),
-    "REFRESH_TOKEN_LIFETIME": timedelta(days=1),
-    "ROTATE_REFRESH_TOKENS": True,
-    "BLACKLIST_AFTER_ROTATION": True,
-    # other settings as needed...
-}
-```
+  SIMPLE_JWT = {
+      "AUTH_HEADER_TYPES": ("Bearer",),
+      "ACCESS_TOKEN_LIFETIME": timedelta(minutes=20),
+      "REFRESH_TOKEN_LIFETIME": timedelta(days=1),
+      "ROTATE_REFRESH_TOKENS": True,
+      "BLACKLIST_AFTER_ROTATION": True,
+      # other settings as needed...
+  }
+  ```
 
 ## API Endpoints
 
@@ -340,7 +340,7 @@ Success response (201):
 
 ```json
 {
-    "svg": "<svg ...>...</svg>"
+  "svg": "<svg ...>...</svg>"
 }
 ```
 
@@ -356,7 +356,7 @@ Request body:
 
 ```json
 {
-    "input_code": "123456"
+  "input_code": "123456"
 }
 ```
 
@@ -364,7 +364,7 @@ Success response (200):
 
 ```json
 {
-    "backup_codes": ["code1", "code2", "..."]
+  "backup_codes": ["code1", "code2", "..."]
 }
 ```
 
@@ -417,8 +417,8 @@ Request body:
 
 ```json
 {
-    "username": "user@example.com",
-    "password": "secure_password"
+  "username": "user@example.com",
+  "password": "secure_password"
 }
 ```
 
@@ -426,9 +426,9 @@ Success response (200) — No TOTP enabled:
 
 ```json
 {
-    "is_totp_enabled": false,
-    "refresh": "eyJ0eXAiOiJKV1QiLCJhbGc...",
-    "access": "eyJ0eXAiOiJKV1QiLCJhbGc..."
+  "is_totp_enabled": false,
+  "refresh": "eyJ0eXAiOiJKV1QiLCJhbGc...",
+  "access": "eyJ0eXAiOiJKV1QiLCJhbGc..."
 }
 ```
 
@@ -436,8 +436,8 @@ Success response (200) — TOTP enabled:
 
 ```json
 {
-    "is_totp_enabled": true,
-    "totp_challenge_token": "eyJ0eXAiOiJKV1QiLCJhbGc..."
+  "is_totp_enabled": true,
+  "totp_challenge_token": "eyJ0eXAiOiJKV1QiLCJhbGc..."
 }
 ```
 
@@ -454,8 +454,8 @@ Request body (TOTP code):
 
 ```json
 {
-    "totp_challenge_token": "...",
-    "otp_code": "123456"
+  "totp_challenge_token": "...",
+  "otp_code": "123456"
 }
 ```
 
@@ -463,8 +463,8 @@ Request body (backup code):
 
 ```json
 {
-    "totp_challenge_token": "...",
-    "backup_code": "BACKUP-CODE-1"
+  "totp_challenge_token": "...",
+  "backup_code": "BACKUP-CODE-1"
 }
 ```
 
@@ -472,8 +472,8 @@ Success response (200):
 
 ```json
 {
-    "refresh": "eyJ0eXAiOiJKV1QiLCJhbGc...",
-    "access": "eyJ0eXAiOiJKV1QiLCJhbGc..."
+  "refresh": "eyJ0eXAiOiJKV1QiLCJhbGc...",
+  "access": "eyJ0eXAiOiJKV1QiLCJhbGc..."
 }
 ```
 
@@ -492,7 +492,7 @@ Request body:
 
 ```json
 {
-    "refresh": "eyJ0eXAiOiJKV1QiLCJhbGc..."
+  "refresh": "eyJ0eXAiOiJKV1QiLCJhbGc..."
 }
 ```
 
@@ -500,8 +500,8 @@ Success response (200):
 
 ```json
 {
-    "access": "eyJ0eXAiOiJKV1QiLCJhbGc...",
-    "refresh": "eyJ0eXAiOiJKV1QiLCJhbGc..." // New refresh token if rotation enabled
+  "access": "eyJ0eXAiOiJKV1QiLCJhbGc...",
+  "refresh": "eyJ0eXAiOiJKV1QiLCJhbGc..." // New refresh token if rotation enabled
 }
 ```
 
@@ -513,7 +513,7 @@ Request body:
 
 ```json
 {
-    "token": "eyJ0eXAiOiJKV1QiLCJhbGc..."
+  "token": "eyJ0eXAiOiJKV1QiLCJhbGc..."
 }
 ```
 
@@ -528,6 +528,27 @@ Error examples (401):
 - Token expired
 - Token blacklisted (if using token blacklist)
 - Invalid token signature
+
+## Signals
+
+django-totp provides the following signals for monitoring and custom logic:
+
+- `totp_created`: Sent after a new TOTP enrollment is created.
+- `totp_disabled`: Sent after a TOTP enrollment is disabled.
+- `backup_codes_rotated`: Sent after backup codes are rotated.
+- `totp_login_success`: Sent after a successful TOTP verification during login.
+- `non_totp_login_success`: Sent after a successful login without TOTP (for users without TOTP enabled).
+
+```python
+# example signal handler
+from django.dispatch import receiver
+from django_totp.signals import totp_created
+
+@receiver(totp_created)
+def handle_totp_created(sender, request, user, **kwargs):
+    # Custom logic after TOTP enrollment creation
+    print(f"TOTP created for user: {user.username}")
+```
 
 ## Integrating 2FA Into Login Flow
 
@@ -703,39 +724,39 @@ Fix:
 django_totp creates two models:
 
 - Totp
-    - user (one-to-one with AUTH_USER_MODEL)
-    - secret_key (encrypted)
-    - created_at
+  - user (one-to-one with AUTH_USER_MODEL)
+  - secret_key (encrypted)
+  - created_at
 - BackupCode
-    - totp (foreign key)
-    - code (encrypted)
-    - is_used
-    - created_at
+  - totp (foreign key)
+  - code (encrypted)
+  - is_used
+  - created_at
 
 ## Public Python API
 
 Useful helpers you can import directly:
 
 - django_totp.auth
-    - is_totp_enabled(user)
-    - generate_challenge_token(user)
-    - verify_challenge_token(token)
-    - get_user_from_challenge_token(token)
+  - is_totp_enabled(user)
+  - generate_challenge_token(user)
+  - verify_challenge_token(token)
+  - get_user_from_challenge_token(token)
 - django_totp.totp
-    - generate_totp_secret()
-    - verify_totp_code(user, input_code)
-    - create_totp_setup(user)
-    - confirm_totp_setup(user, input_code)
-    - disable_totp(user)
+  - generate_totp_secret()
+  - verify_totp_code(user, input_code)
+  - create_totp_setup(user)
+  - confirm_totp_setup(user, input_code)
+  - disable_totp(user)
 - django_totp.backup_code_utils
-    - store_backup_codes(user, codes)
-    - verify_backup_code(user, input_code)
-    - rotate_backup_codes(user)
+  - store_backup_codes(user, codes)
+  - verify_backup_code(user, input_code)
+  - rotate_backup_codes(user)
 - django_totp.encryption
-    - generate_fernet_key()
-    - resolve_fernet_key(default=None)
-    - encrypt(value)
-    - decrypt(value)
+  - generate_fernet_key()
+  - resolve_fernet_key(default=None)
+  - encrypt(value)
+  - decrypt(value)
 
 ## Interactive Helper Tools
 
@@ -758,8 +779,8 @@ Contributions are welcome! Please open issues for bugs or feature requests, and 
 ## Maintainers
 
 - Kumar Sahil
-    - GitHub: [@krsahil8825](https://github.com/krsahil8825)
-    - Email: [krsahil8825@gmail.com](mailto:krsahil8825@gmail.com)
+  - GitHub: [@krsahil8825](https://github.com/krsahil8825)
+  - Email: [krsahil8825@gmail.com](mailto:krsahil8825@gmail.com)
 
 ## License
 

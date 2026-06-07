@@ -29,7 +29,7 @@ from .serializers import (
 )
 from .signals import (
     backup_codes_rotated,
-    totp_confirmed,
+    totp_created,
     totp_disabled,
     totp_login_succeeded,
     non_totp_login_succeeded,
@@ -87,7 +87,7 @@ class TotpViewSet(viewsets.GenericViewSet):
 
         response_serializer = self.get_serializer({"backup_codes": backup_codes})
 
-        totp_confirmed.send_robust(
+        totp_created.send_robust(
             sender=self.__class__, request=request, user=request.user
         )
 

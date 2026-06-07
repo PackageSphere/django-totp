@@ -9,7 +9,7 @@ from django.dispatch import Signal
 
 
 # User successfully completes TOTP enrollment.
-totp_confirmed = Signal()
+totp_created = Signal()
 
 # User disables TOTP authentication.
 totp_disabled = Signal()
