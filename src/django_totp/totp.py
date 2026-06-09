@@ -59,7 +59,7 @@ def create_totp_setup(user: User) -> str:
         if existing_totp:
             if BackupCode.objects.filter(totp=existing_totp).exists():
                 raise ValueError(
-                    "TOTP is already enabled. Disable it before creating a new one."
+                    "TOTP is already enabled. Disable the old one before creating a new one."
                 )
 
             existing_totp.delete()

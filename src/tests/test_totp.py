@@ -19,13 +19,16 @@ class PostTotpCreate:
         assert "<svg" in response.data["svg"]
         assert Totp.objects.filter(user=user).exists()
 
-    def test_rejects_when_totp_already_exists(self, api_client, totp_user):
+    def test_allows_recreating_totp_when_no_backup_codes(
+        self, api_client, totp_user
+    ):
         api_client.force_authenticate(user=totp_user)
 
         response = api_client.post(reverse("totp-create"), {}, format="json")
 
-        assert response.status_code == status.HTTP_400_BAD_REQUEST
-        assert response.data["detail"] == "TOTP already exists for this user."
+        assert response.status_code == status.HTTP_201_CREATED
+        assert "<svg" in response.data["svg"]
+        assert Totp.objects.filter(user=totp_user).exists()
 
     def test_requires_authentication(self, api_client):
         response = api_client.post(reverse("totp-create"), {}, format="json")
