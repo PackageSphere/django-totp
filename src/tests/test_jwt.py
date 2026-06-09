@@ -26,12 +26,15 @@ class PostJwtCreate:
     def test_returns_challenge_token_for_user_with_totp(
         self,
         api_client,
-        totp_user,
+        totp_user_with_backup_codes,
         password,
     ):
         response = api_client.post(
             reverse("jwt-create"),
-            {"username": totp_user.username, "password": password},
+            {
+                "username": totp_user_with_backup_codes.username,
+                "password": password,
+            },
             format="json",
         )
 
@@ -40,7 +43,7 @@ class PostJwtCreate:
         assert response.data["totp_challenge_token"]
         assert "access" not in response.data
         assert "refresh" not in response.data
-        assert get_user_from_challenge_token(response.data["totp_challenge_token"]) == totp_user
+        assert get_user_from_challenge_token(response.data["totp_challenge_token"]) == totp_user_with_backup_codes
 
     def test_rejects_invalid_credentials(self, api_client, user):
         response = api_client.post(

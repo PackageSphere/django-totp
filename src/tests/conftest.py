@@ -74,5 +74,5 @@ def totp_user_with_backup_codes(totp_user, backup_codes):
 
 
 @pytest.fixture
-def challenge_token(totp_user):
-    return generate_challenge_token(totp_user)
+def challenge_token(totp_user_with_backup_codes):
+    return generate_challenge_token(totp_user_with_backup_codes)
