@@ -11,7 +11,7 @@ from django.conf import settings as django_settings
 from django.core import signing
 from django.core.signing import BadSignature, SignatureExpired
 
-from .models import Totp
+from .models import Totp, BackupCode
 
 AUTH_USER_MODEL = get_user_model()
 
@@ -24,7 +24,12 @@ TOKEN_MAX_AGE = getattr(django_settings, "TOTP_TOKEN_MAX_AGE", 120)  # 2 minutes
 def is_totp_enabled(user: User) -> bool:
     """Check if a user has TOTP authentication enabled."""
 
-    return Totp.objects.filter(user=user).exists()
+    existing_totp = Totp.objects.filter(user=user).first()
+
+    if existing_totp and BackupCode.objects.filter(totp=existing_totp).exists():
+        return True
+
+    return False
 
 
 def generate_challenge_token(user: User) -> str:
