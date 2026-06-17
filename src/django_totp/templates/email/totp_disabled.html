@@ -1,0 +1,21 @@
+{% load i18n %}
+
+{% block subject %}
+{% blocktrans %}{{ site_name }} - Two-factor authentication (TOTP) has been disabled on your account{% endblocktrans %}
+{% endblock %}
+
+{% block text_body %}
+{% trans "Two-factor authentication (TOTP) has been disabled on your account." %}
+
+{% trans "If you did not make this change, please contact support immediately and secure your account." %}
+
+{% blocktrans %}The {{ site_name }} team{% endblocktrans %}
+{% endblock text_body %}
+
+{% block html_body %}
+<p>{% trans "Two-factor authentication (TOTP) has been disabled on your account." %}</p>
+
+<p>{% trans "If you did not make this change, please contact support immediately and secure your account." %}</p>
+
+<p>{% blocktrans %}The {{ site_name }} team{% endblocktrans %}</p>
+{% endblock html_body %}
