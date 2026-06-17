@@ -6,7 +6,11 @@ Serializer definitions for the django_totp API layer.
 """
 
 from django.contrib.auth import get_user_model
+from rest_framework.exceptions import ValidationError
 from rest_framework import serializers
+
+
+from . import email_utils
 
 User = get_user_model()
 
@@ -85,3 +89,38 @@ class JWT2FAVerifySerializer(serializers.Serializer):
             )
 
         return attrs
+
+
+class TotpRecoverySerializer(serializers.Serializer):
+    """Serializer for TOTP recovery request."""
+
+    uid = serializers.CharField(write_only=True)
+    token = serializers.CharField(write_only=True)
+    password = serializers.CharField(write_only=True, max_length=128)
+
+    def validate(self, attrs):
+        validated_data = super().validate(attrs)
+
+        try:
+            uid = email_utils.decode_uid(self.initial_data.get("uid", ""))
+            self.user = User.objects.get(pk=uid)
+        except (User.DoesNotExist, ValueError, TypeError, OverflowError):
+            raise ValidationError(
+                {"message": ["The recovery link is invalid or has expired."]}
+            )
+
+        is_token_valid = self.context["view"].token_generator.check_token(
+            self.user, self.initial_data.get("token", "")
+        )
+
+        if not is_token_valid:
+            raise ValidationError(
+                {"message": ["The recovery link is invalid or has expired."]}
+            )
+
+        password = validated_data["password"]
+
+        if not self.user.check_password(password):
+            raise ValidationError({"message": ["The provided credentials is invalid."]})
+
+        return validated_data
