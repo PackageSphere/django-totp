@@ -33,10 +33,11 @@ from .serializers import (
 )
 from .signals import (
     backup_codes_rotated,
+    non_totp_login_succeeded,
     totp_created,
     totp_disabled,
     totp_login_succeeded,
-    non_totp_login_succeeded,
+    totp_recovery_succeeded,
 )
 from .totp import create_totp_setup, confirm_totp_setup, disable_totp, verify_totp_code
 from .throttle import TotpAnonThrottle, TotpUserThrottle
@@ -191,7 +192,12 @@ class TotpRecoveryViewSet(viewsets.GenericViewSet):
         except ValueError:
             return Response(status=status.HTTP_204_NO_CONTENT)
 
-        totp_disabled.send_robust(sender=self.__class__, request=request, user=user)
+        totp_recovery_succeeded.send_robust(
+            sender=self.__class__, request=request, user=user
+        )
+        totp_disabled.send_robust(
+            sender=self.__class__, request=request, user=user
+        )
         TotpDisabledEmail(
             request=request,
             context={"user": user},
