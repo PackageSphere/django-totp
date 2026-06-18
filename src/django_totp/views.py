@@ -29,7 +29,7 @@ from .serializers import (
     TotpConfirmRequestSerializer,
     TotpCreateResponseSerializer,
     TotpRecoveryRequestSerializer,
-    TotpRecoverySerializer,
+    TotpRecoveryConfirmSerializer,
 )
 from .signals import (
     backup_codes_rotated,
@@ -147,10 +147,10 @@ class TotpRecoveryViewSet(viewsets.GenericViewSet):
         if self.action == "recovery":
             return TotpRecoveryRequestSerializer
         elif self.action == "recovery_confirm":
-            return TotpRecoverySerializer
+            return TotpRecoveryConfirmSerializer
         return super().get_serializer_class()
 
-    @action(detail=False, methods=["post"], url_path="recovery")
+    @action(detail=False, methods=["post"])
     def recovery(self, request):
         """Send a TOTP recovery email to the user if they have TOTP enabled."""
 
@@ -178,7 +178,7 @@ class TotpRecoveryViewSet(viewsets.GenericViewSet):
 
         return Response(response_serializer.data, status=status.HTTP_200_OK)
 
-    @action(detail=False, methods=["post"], url_path="recovery_confirm")
+    @action(detail=False, methods=["post"])
     def recovery_confirm(self, request):
         """Confirm TOTP recovery by validating the recovery token and current password, then disabling TOTP on the account."""
 

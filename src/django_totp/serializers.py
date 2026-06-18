@@ -98,7 +98,7 @@ class TotpRecoveryRequestSerializer(serializers.Serializer):
     details = serializers.CharField(read_only=True)
 
 
-class TotpRecoverySerializer(serializers.Serializer):
+class TotpRecoveryConfirmSerializer(serializers.Serializer):
     """Serializer for TOTP recovery request."""
 
     uid = serializers.CharField(write_only=True)
