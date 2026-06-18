@@ -5,7 +5,8 @@ django_totp.views
 DRF view layer for TOTP enrollment and verification endpoints.
 """
 
-from django.contrib.auth import authenticate
+from django.contrib.auth import authenticate, get_user_model
+from django.contrib.auth.tokens import default_token_generator
 from rest_framework import status, viewsets
 from rest_framework.decorators import action
 from rest_framework.generics import GenericAPIView
@@ -19,6 +20,7 @@ from .auth import (
     is_totp_enabled,
 )
 from .backup_code_utils import rotate_backup_codes, verify_backup_code
+from .email import TotpRecoveryEmail, TotpDisabledEmail
 from .serializers import (
     BackupCodeListSerializer,
     EmptySerializer,
@@ -26,20 +28,26 @@ from .serializers import (
     JWT2FAVerifySerializer,
     TotpConfirmRequestSerializer,
     TotpCreateResponseSerializer,
+    TotpRecoveryRequestSerializer,
+    TotpRecoveryConfirmSerializer,
 )
 from .signals import (
     backup_codes_rotated,
+    non_totp_login_succeeded,
     totp_created,
     totp_disabled,
     totp_login_succeeded,
-    non_totp_login_succeeded,
+    totp_recovery_succeeded,
 )
 from .totp import create_totp_setup, confirm_totp_setup, disable_totp, verify_totp_code
 from .throttle import TotpAnonThrottle, TotpUserThrottle
 
 
+User = get_user_model()
+
+
 class TotpViewSet(viewsets.GenericViewSet):
-    """Expose TOTP enrollment, confirmation, and recovery endpoints."""
+    """Expose TOTP enrollment, confirmation, and management endpoints."""
 
     permission_classes = [IsAuthenticated]
     throttle_classes = [TotpUserThrottle]
@@ -124,6 +132,78 @@ class TotpViewSet(viewsets.GenericViewSet):
         )
 
         return Response(response_serializer.data, status=status.HTTP_200_OK)
+
+
+class TotpRecoveryViewSet(viewsets.GenericViewSet):
+    """Expose TOTP recovery endpoints."""
+
+    permission_classes = [AllowAny]
+    throttle_classes = [TotpUserThrottle, TotpAnonThrottle]
+    token_generator = default_token_generator
+
+    def get_serializer_class(self):
+        """Return the serializer that matches the current action."""
+
+        if self.action == "recovery":
+            return TotpRecoveryRequestSerializer
+        elif self.action == "recovery_confirm":
+            return TotpRecoveryConfirmSerializer
+        return super().get_serializer_class()
+
+    @action(detail=False, methods=["post"])
+    def recovery(self, request):
+        """Send a TOTP recovery email to the user if they have TOTP enabled."""
+
+        request_serializer = self.get_serializer(data=request.data)
+        request_serializer.is_valid(raise_exception=True)
+
+        email = request_serializer.validated_data["email"]
+
+        user = User.objects.filter(email__iexact=email).first()
+
+        if user and is_totp_enabled(user):
+            TotpRecoveryEmail(
+                request=request,
+                context={"user": user},
+            ).send([user.email])
+
+        response_serializer = self.get_serializer(
+            {
+                "details": (
+                    "If an account with that email exists and has TOTP "
+                    "enabled, a recovery email has been sent."
+                )
+            }
+        )
+
+        return Response(response_serializer.data, status=status.HTTP_200_OK)
+
+    @action(detail=False, methods=["post"])
+    def recovery_confirm(self, request):
+        """Confirm TOTP recovery by validating the recovery token and current password, then disabling TOTP on the account."""
+
+        request_serializer = self.get_serializer(data=request.data)
+        request_serializer.is_valid(raise_exception=True)
+
+        user = request_serializer.user
+
+        try:
+            disable_totp(user)
+        except ValueError:
+            return Response(status=status.HTTP_204_NO_CONTENT)
+
+        totp_recovery_succeeded.send_robust(
+            sender=self.__class__, request=request, user=user
+        )
+        totp_disabled.send_robust(
+            sender=self.__class__, request=request, user=user
+        )
+        TotpDisabledEmail(
+            request=request,
+            context={"user": user},
+        ).send([user.email])
+
+        return Response(status=status.HTTP_204_NO_CONTENT)
 
 
 class JWTCreateView(GenericAPIView):

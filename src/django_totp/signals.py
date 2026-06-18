@@ -23,3 +23,6 @@ totp_login_succeeded = Signal()
 
 # User successfully authenticates without requiring TOTP.
 non_totp_login_succeeded = Signal()
+
+# user recovers their account after losing access to their TOTP device.
+totp_recovery_succeeded = Signal()

@@ -50,68 +50,68 @@
 
 Production-ready TOTP (Time-based One-Time Password) support for Django and Django REST Framework.
 
-django-totp helps you add two-factor authentication (2FA) to your Django project with:
-
-- Secure TOTP secret storage (Fernet encryption)
-- Enrollment QR generation (SVG)
-- Backup code generation, verification, and rotation
-- DRF endpoints for enrollment lifecycle
-- Token helpers for two-step authentication flows
+django-totp adds two-factor authentication (2FA) to a Django project with encrypted secret storage, QR-code enrollment, one-time backup codes, email-based account recovery, and JWT-aware login endpoints - all exposed as a small, composable set of DRF views.
 
 This README is the single source of documentation for installation, configuration, integration, and operations.
 
 ## Table of Contents
 
-- Overview
-- Features
-- Requirements
-- Installation
-- Quick Start
-- Configuration Reference
-- API Endpoints
-- JWT Authentication
-- Integrating 2FA Into Login Flow
-- Security and Production Checklist
-- Troubleshooting
-- Data Model
-- Public Python API
+- [Overview](#overview)
+- [Features](#features)
+- [Requirements](#requirements)
+- [Installation](#installation)
+- [Quick Start](#quick-start)
+- [Configuration Reference](#configuration-reference)
+- [API Endpoints](#api-endpoints)
+- [Email Templates](#email-templates)
+- [Signals](#signals)
+- [Django Admin](#django-admin)
+- [Integrating 2FA Into Login Flow](#integrating-2fa-into-login-flow)
+- [Integrating Account Recovery](#integrating-account-recovery)
+- [Security and Production Checklist](#security-and-production-checklist)
+- [Troubleshooting](#troubleshooting)
+- [Data Model](#data-model)
+- [Public Python API](#public-python-api)
+- [Interactive Helper Tools](#interactive-helper-tools)
+- [Contributing](#contributing)
+- [Maintainers](#maintainers)
+- [License](#license)
 
 ## Overview
 
-django-totp stores each user's TOTP secret in encrypted form and provides API actions to:
+django-totp stores each user's TOTP secret in encrypted form and exposes API actions to:
 
-1. Create enrollment and return a QR code
-2. Confirm enrollment using a valid OTP
-3. Return one-time backup recovery codes
-4. Rotate backup codes
-5. Disable TOTP
+1. Create an enrollment and return a provisioning QR code
+2. Confirm enrollment with a valid OTP and receive backup codes
+3. Disable TOTP, or rotate backup codes, for an already-enrolled user
+4. Recover an account by email when a user has lost their TOTP device, without ever requiring the device itself
 
-You can use it as:
+It's designed to be used as:
 
 - A drop-in REST API module in an existing Django + DRF project
-- A building block for custom authentication endpoints
+- A building block for fully custom authentication and recovery flows, via its lower-level helper functions
 
 ## Features
 
-- Encrypted secret storage using cryptography.Fernet
-- Configurable issuer name for authenticator apps
-- One-to-one user-to-TOTP mapping
-- Configurable number of backup codes per user
-- Backup code verification with one-time-use marking
-- Rate limiting for TOTP endpoints
-- Signed short-lived token helpers for step-up login flows
+- Encrypted secret and backup-code storage using `cryptography.Fernet`
+- Configurable issuer name shown in authenticator apps
+- One-to-one user-to-TOTP mapping with cascading cleanup on disable
+- Configurable number of backup codes per user, enforced at the model level
+- Backup code verification with constant-time comparison and one-time-use marking
+- Email-based account recovery flow for users who lose access to their TOTP device, with no enumeration of which emails exist
+- Configurable rate limiting for both authenticated and anonymous endpoints, to protect against brute-force and enumeration attacks on both login and recovery surfaces
+- Signed, short-lived challenge tokens for two-step login flows
+- Django admin integration with masked secrets and masked backup codes
+- A signal for every state-changing action, for audit logging or custom side effects
 
 ## Requirements
 
 - Python 3.12+
 - Django 5.0+
 - Django REST Framework 3.15+
+- djangorestframework-simplejwt 5.5.1+ (only required if you use the JWT endpoints)
 
-Installed dependencies used by this package:
-
-- cryptography
-- pyotp
-- qrcode
+Installed dependencies used by this package: `cryptography`, `pyotp`, `qrcode`.
 
 ## Installation
 
@@ -123,9 +123,7 @@ pip install django-totp
 
 ## Quick Start
 
-### 1. Add apps
-
-In Django settings:
+### 1. Add the app
 
 ```python
 # settings.py
@@ -136,7 +134,7 @@ INSTALLED_APPS = [
 ]
 ```
 
-### 2. Set encryption key (required)
+### 2. Set the encryption key (required)
 
 Generate a Fernet key once:
 
@@ -144,14 +142,7 @@ Generate a Fernet key once:
 python -c "from django_totp.encryption import generate_fernet_key; print(generate_fernet_key())"
 ```
 
-Add it as an environment variable:
-
-```txt
-# .env
-TOTP_ENCRYPTION_KEY=your-generated-key
-```
-
-And load in settings:
+Load it from the environment rather than hardcoding it:
 
 ```python
 # settings.py
@@ -159,14 +150,11 @@ import os
 TOTP_ENCRYPTION_KEY = os.environ["TOTP_ENCRYPTION_KEY"]
 ```
 
-Important:
+Generate this key once per environment and never rotate it casually - rotating it makes every previously encrypted TOTP secret and backup code unreadable. See [Security and Production Checklist](#security-and-production-checklist) for the full reasoning.
 
-- Do not generate a new key on each start in production
-- Changing this key later makes previously encrypted TOTP data unreadable
+### 3. Include the URLs
 
-### 3. Include URLs
-
-In your project URL configuration:
+django-totp ships three independent URL modules so you can include only what you need:
 
 ```python
 # urls.py
@@ -174,10 +162,13 @@ from django.urls import include, path
 
 urlpatterns = [
     # your routes...
-    path("api/", include("django_totp.urls")),
-    path("api/", include("django_totp.urls.jwt"))
+    path("api/", include("django_totp.urls")),           # enroll / confirm / disable / rotate backup codes
+    path("api/", include("django_totp.urls.jwt")),        # JWT login + 2FA verification
+    path("api/", include("django_totp.urls.recovery")),   # email-based account recovery
 ]
 ```
+
+All three are optional independently of each other: a project that doesn't use JWT can omit `django_totp.urls.jwt`, and a project that doesn't want self-service recovery can omit `django_totp.urls.recovery`.
 
 ### 4. Run migrations
 
@@ -185,359 +176,314 @@ urlpatterns = [
 python manage.py migrate
 ```
 
-### 5. Call endpoints as authenticated user
+### 5. Call the endpoints
 
-TOTP management endpoints:
+TOTP management endpoints (authenticated):
 
-- Enrollment create: `POST /api/totp/create/`
-- Confirm enrollment: `POST /api/totp/confirm/`
-- Disable TOTP: `POST /api/totp/disable/`
-- Rotate backup codes: `POST /api/totp/rotate_backup_codes/`
+- `POST /api/totp/create/`
+- `POST /api/totp/confirm/`
+- `POST /api/totp/disable/`
+- `POST /api/totp/rotate_backup_codes/`
 
-JWT Authentication endpoints (if using JWT):
+TOTP recovery endpoints (unauthenticated):
 
-- Create: `POST /api/jwt/create/`
-- TOTP Verify: `POST /api/jwt/totp/verify/`
-- Refresh: `POST /api/jwt/refresh/`
-- Verify: `POST /api/jwt/verify/`
+- `POST /api/totp/recovery/`
+- `POST /api/totp/recovery_confirm/`
+
+JWT authentication endpoints:
+
+- `POST /api/jwt/create/`
+- `POST /api/jwt/totp/verify/`
+- `POST /api/jwt/refresh/`
+- `POST /api/jwt/verify/`
 
 ## Configuration Reference
 
-All settings below are read from Django settings.
+All settings are optional unless marked otherwise, and are read once at import time via `getattr(settings, ...)`, with sensible defaults.
 
-> Note: Configure Your Secrets in Environment Variables! Do not hardcode sensitive values in settings.py.
+### Encryption
 
-### TOTP_ENCRYPTION_KEY
+| Setting               | Required | Default | Purpose                                                                                                                |
+| --------------------- | -------- | ------- | ---------------------------------------------------------------------------------------------------------------------- |
+| `TOTP_ENCRYPTION_KEY` | Yes      | -       | Fernet key used to encrypt TOTP secrets and backup codes at rest. Raises `ImproperlyConfigured` if missing or invalid. |
 
-- Required: Yes
-- Type: string (valid Fernet key)
-- Purpose: Encrypts TOTP secrets and backup codes at rest
+### Enrollment and Backup Codes
 
-  If missing or invalid, django-totp raises ImproperlyConfigured.
+| Setting                 | Required | Default   | Purpose                                               |
+| ----------------------- | -------- | --------- | ----------------------------------------------------- |
+| `TOTP_ISSUER`           | No       | `"MyApp"` | Issuer label shown inside authenticator apps.         |
+| `TOTP_MAX_BACKUP_CODES` | No       | `10`      | Number of backup codes generated and stored per user. |
 
-  ```python
-  # settings.py
-  TOTP_ENCRYPTION_KEY = "your-generated-key"
-  # generate with: python -c from django_totp.encryption import generate_fernet_key; print(generate_fernet_key())
-  ```
+### Throttling
 
-### TOTP_ISSUER
+| Setting              | Required | Default       | Purpose                                                                                                                                   |
+| -------------------- | -------- | ------------- | ----------------------------------------------------------------------------------------------------------------------------------------- |
+| `TOTP_THROTTLE_RATE` | No       | `"10/minute"` | Rate limit applied to every django-totp endpoint, for both authenticated (`TotpUserThrottle`) and anonymous (`TotpAnonThrottle`) callers. |
 
-- Required: No
-- Default: MyApp
-- Type: string
-- Purpose: Issuer label shown in authenticator apps
+> `TotpThrottle` still exists as an alias of `TotpUserThrottle` for backward compatibility, but is deprecated and will be removed in a future release. New code should depend on `TotpUserThrottle` directly.
 
-  ```python
-  # settings.py
-  TOTP_ISSUER = "XYZ Platform"
-  ```
+### 2FA Login Challenge Tokens
 
-### TOTP_MAX_BACKUP_CODES
+These govern the short-lived token issued by `/api/jwt/create/` while a user is mid-login and has not yet supplied their TOTP or backup code.
 
-- Required: No
-- Default: 10
-- Type: integer
-- Purpose: Number of backup codes generated per user set
+| Setting              | Required                  | Default                    | Purpose                                                                                                      |
+| -------------------- | ------------------------- | -------------------------- | ------------------------------------------------------------------------------------------------------------ |
+| `TOTP_TOKEN_SALT`    | Recommended in production | `"django-totp-token-salt"` | Salt used when signing the challenge token. Changing it invalidates every challenge token already in flight. |
+| `TOTP_TOKEN_MAX_AGE` | No                        | `120` (seconds)            | How long the challenge token remains valid after `/api/jwt/create/` is called.                               |
 
-  ```python
-  # settings.py
-  TOTP_MAX_BACKUP_CODES = 12
-  ```
+### Account Recovery and Email
 
-### TOTP_THROTTLE_RATE
+| Setting                        | Required                  | Default                                        | Purpose                                                                                                                                                                |
+| ------------------------------ | ------------------------- | ---------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `TOTP_RECOVERY_CONFIRM_URL`    | No                        | `"/totp-recovery/{uid}/{token}"`               | Path template embedded in the recovery email. `{uid}` and `{token}` are substituted automatically; point this at your frontend's recovery page, not at the API itself. |
+| `TOTP_RECOVERY_EMAIL_TEMPLATE` | No                        | `"email/totp_recovery.html"`                   | Template used for the initial recovery email.                                                                                                                          |
+| `TOTP_DISABLED_EMAIL_TEMPLATE` | No                        | `"email/totp_disabled.html"`                   | Template used for the confirmation email sent once TOTP has actually been disabled.                                                                                    |
+| `DOMAIN`                       | Recommended in production | `"localhost:3000"`                             | Host used to build the recovery link. Point this at your frontend, not your API, if they're on different hosts.                                                        |
+| `PROTOCOL`                     | Recommended in production | `"http"`                                       | Scheme used to build the recovery link. Use `"https"` in production.                                                                                                   |
+| `SITE_NAME`                    | Recommended in production | `"localhost"`                                  | Display name interpolated into the email subject and body.                                                                                                             |
+| `DEFAULT_FROM_EMAIL`           | Recommended in production | Django's own default (`"webmaster@localhost"`) | Sender address for both recovery emails. This is Django's built-in setting, not one defined by django-totp.                                                            |
 
-- Required: No
-- Default: 10/minute
-- Type: DRF throttle rate string
-- Purpose: Rate limit for all django-totp endpoint actions
+Recovery links are signed with Django's own `default_token_generator` (the same mechanism Django uses for password resets), not with `TOTP_TOKEN_SALT` / `TOTP_TOKEN_MAX_AGE` - those two only govern the separate, much shorter-lived 2FA login challenge token described above. As a result, recovery link expiry is controlled by Django's native `PASSWORD_RESET_TIMEOUT` setting (3 days by default), and a recovery link is automatically invalidated the moment the user's password changes.
 
-  ```python
-  # settings.py
-  TOTP_THROTTLE_RATE = "5/minute"
-  ```
+### DRF and JWT Integration
 
-### TOTP_TOKEN_SALT
+Required only if you're using the JWT endpoints:
 
-- Required: True for production and False for development
-- Default: django-totp-token-salt
-- Type: string
-- Purpose: Salt used for signed temporary token helpers
+```python
+# settings.py
+REST_FRAMEWORK = {
+    "DEFAULT_AUTHENTICATION_CLASSES": (
+        "rest_framework_simplejwt.authentication.JWTAuthentication",
+    ),
+}
 
-  ```python
-  # settings.py
-  TOTP_TOKEN_SALT = os.getenv("TOTP_TOKEN_SALT")
-  ```
+from datetime import timedelta
 
-### TOTP_TOKEN_MAX_AGE
+SIMPLE_JWT = {
+    "AUTH_HEADER_TYPES": ("Bearer",),
+    "ACCESS_TOKEN_LIFETIME": timedelta(minutes=20),
+    "REFRESH_TOKEN_LIFETIME": timedelta(days=1),
+    "ROTATE_REFRESH_TOKENS": True,
+    "BLACKLIST_AFTER_ROTATION": True,
+    # other settings as needed...
+}
+```
 
-- Required: No
-- Default: 120
-- Type: integer (seconds)
-- Purpose: Token expiry for signed temporary token helpers
-
-  ```python
-  # settings.py
-  TOTP_TOKEN_MAX_AGE = 120
-  ```
-
-### REST_FRAMEWORK JWT Authentication
-
-- Required: No (only if using JWT integration)
-- Purpose: Configure DRF to use JWTAuthentication for protected endpoints
-
-  ```python
-  # settings.py
-  REST_FRAMEWORK = {
-      "DEFAULT_AUTHENTICATION_CLASSES": (
-          "rest_framework_simplejwt.authentication.JWTAuthentication",
-      ),
-  }
-  ```
-
-### SIMPLE_JWT Settings
-
-- Required: No (only if using JWT integration)
-- Purpose: Configure JWT behavior, token lifetimes, rotation, etc.
-- Docs: https://django-rest-framework-simplejwt.readthedocs.io/en/latest/settings.html
-
-  ```python
-  # settings.py
-  from datetime import timedelta
-
-  SIMPLE_JWT = {
-      "AUTH_HEADER_TYPES": ("Bearer",),
-      "ACCESS_TOKEN_LIFETIME": timedelta(minutes=20),
-      "REFRESH_TOKEN_LIFETIME": timedelta(days=1),
-      "ROTATE_REFRESH_TOKENS": True,
-      "BLACKLIST_AFTER_ROTATION": True,
-      # other settings as needed...
-  }
-  ```
+See the [djangorestframework-simplejwt settings reference](https://django-rest-framework-simplejwt.readthedocs.io/en/latest/settings.html) for the full list of available options.
 
 ## API Endpoints
 
-Base path assumes you include `django_totp.urls` at /api/. For JWT endpoints, include `django_totp.urls.jwt` at the same base path.
+All endpoints return error payloads as JSON with a `detail` field, unless otherwise noted.
 
-All endpoints:
+### TOTP Management Endpoints
 
-- Use DRF user throttle (configured by TOTP_THROTTLE_RATE)
-- Return error payload as JSON with detail field on validation/service errors
+A user enables TOTP by calling `create` to receive a QR code, then `confirm` with a valid OTP to finalize enrollment and receive backup codes. All four endpoints require an authenticated user.
 
-### TOTP Setup Endpoints
+#### `POST /api/totp/create/`
 
-When a user wants to enable TOTP, they should first call the create endpoint to get the QR code, then confirm with a valid OTP to finalize enrollment and receive backup codes.
+Starts TOTP enrollment, creating an encrypted secret and returning a QR-code SVG.
 
-#### POST /api/totp/create/
-
-Starts TOTP enrollment. Creates an encrypted secret and returns QR SVG.
-
-Request body:
-
-- Empty
+Request body: empty.
 
 Success response (201):
 
 ```json
-{
-  "svg": "<svg ...>...</svg>"
-}
+{ "svg": "<svg ...>...</svg>" }
 ```
 
-Error examples (400):
+Error examples (400): TOTP already exists for this user.
 
-- TOTP already exists for this user
+#### `POST /api/totp/confirm/`
 
-#### POST /api/totp/confirm/
-
-Confirms enrollment using a valid code from authenticator app and returns backup codes.
+Confirms enrollment using a valid code from an authenticator app and returns backup codes.
 
 Request body:
 
 ```json
-{
-  "input_code": "123456"
-}
+{ "input_code": "123456" }
 ```
 
 Success response (200):
 
 ```json
-{
-  "backup_codes": ["code1", "code2", "..."]
-}
+{ "backup_codes": ["code1", "code2", "..."] }
 ```
 
-Error examples (400):
+Error examples (400): user has no associated TOTP secret; invalid TOTP code.
 
-- User does not have an associated TOTP secret
-- Invalid TOTP code
-
-#### POST /api/totp/disable/
+#### `POST /api/totp/disable/`
 
 Disables TOTP and deletes associated backup codes.
 
-Request body:
+Request body: empty.
 
-- Empty
+Success response: 204 No Content.
 
-Success response:
+Error examples (400): user has no associated TOTP secret.
 
-- 204 No Content
-
-Error examples (400):
-
-- User does not have an associated TOTP secret
-
-#### POST /api/totp/rotate_backup_codes/
+#### `POST /api/totp/rotate_backup_codes/`
 
 Replaces all existing backup codes with a new set.
 
-Request body:
-
-- Empty
+Request body: empty.
 
 Success response (200):
 
-```python
-{
-    "backup_codes": ["new1", "new2", "..."]
-}
+```json
+{ "backup_codes": ["new1", "new2", "..."] }
 ```
 
-### JWT Authentication Endpoints
+### TOTP Recovery Endpoints
 
-When django_totp is integrated with JWT authentication, use these endpoints for 2FA-aware token issuance.
+These two endpoints exist for users who have lost their TOTP device and therefore can't satisfy a normal authenticated request. Both are unauthenticated by design, and both are throttled for anonymous as well as authenticated callers.
 
-#### POST /api/jwt/create/
+#### `POST /api/totp/recovery/`
 
-Initiate login with username and password. Returns JWT tokens if user has no TOTP enabled, or a challenge token if 2FA is required.
+Sends a recovery email if, and only if, an account with the given email exists and has TOTP enabled - but the response is identical either way, to avoid leaking which emails are registered.
 
 Request body:
 
 ```json
-{
-  "username": "user@example.com",
-  "password": "secure_password"
-}
+{ "email": "user@example.com" }
 ```
 
-Success response (200) — No TOTP enabled:
+Success response (200), always returned regardless of whether the account exists:
 
 ```json
-{
-  "is_totp_enabled": false,
-  "refresh": "eyJ0eXAiOiJKV1QiLCJhbGc...",
-  "access": "eyJ0eXAiOiJKV1QiLCJhbGc..."
-}
+{ "details": "If an account with that email exists and has TOTP enabled, a recovery email has been sent." }
 ```
 
-Success response (200) — TOTP enabled:
+#### `POST /api/totp/recovery_confirm/`
+
+Validates the signed `uid`/`token` pair from the recovery email together with the account's current password, then disables TOTP on the account and sends a confirmation email.
+
+Request body:
 
 ```json
-{
-  "is_totp_enabled": true,
-  "totp_challenge_token": "eyJ0eXAiOiJKV1QiLCJhbGc..."
-}
+{ "uid": "...", "token": "...", "password": "current_account_password" }
 ```
 
-Error examples (400/401):
+Success response: 204 No Content.
 
-- Invalid username/password combination
-- User account inactive or disabled
+Error examples (400):
 
-#### POST /api/jwt/totp/verify/
+```json
+{ "message": ["The recovery link is invalid or has expired."] }
+```
 
-Verify TOTP code or backup code and receive JWT tokens. Must be called after `/api/jwt/create/` when TOTP is enabled.
+```json
+{ "message": ["The provided credentials is invalid."] }
+```
+
+> Requiring the account's current password here, in addition to the signed link, means a leaked or intercepted recovery email alone is not enough to disable a user's 2FA.
+
+### JWT Authentication Endpoints
+
+Use these when django-totp is integrated with JWT authentication, for 2FA-aware token issuance.
+
+#### `POST /api/jwt/create/`
+
+Initiates login with username and password. Returns JWT tokens directly if the user has no TOTP enabled, or a challenge token if 2FA is required.
+
+Request body:
+
+```json
+{ "username": "user@example.com", "password": "secure_password" }
+```
+
+Success response (200) - no TOTP enabled:
+
+```json
+{ "is_totp_enabled": false, "refresh": "eyJ0eXAiOiJKV1QiLCJhbGc...", "access": "eyJ0eXAiOiJKV1QiLCJhbGc..." }
+```
+
+Success response (200) - TOTP enabled:
+
+```json
+{ "is_totp_enabled": true, "totp_challenge_token": "eyJ0eXAiOiJKV1QiLCJhbGc..." }
+```
+
+Error examples (401): invalid username/password combination.
+
+#### `POST /api/jwt/totp/verify/`
+
+Verifies a TOTP code or backup code and returns JWT tokens. Must be called after `/api/jwt/create/` when TOTP is enabled.
 
 Request body (TOTP code):
 
 ```json
-{
-  "totp_challenge_token": "...",
-  "otp_code": "123456"
-}
+{ "totp_challenge_token": "...", "otp_code": "123456" }
 ```
 
 Request body (backup code):
 
 ```json
-{
-  "totp_challenge_token": "...",
-  "backup_code": "BACKUP-CODE-1"
-}
+{ "totp_challenge_token": "...", "backup_code": "BACKUP-CODE-1" }
 ```
 
 Success response (200):
 
 ```json
-{
-  "refresh": "eyJ0eXAiOiJKV1QiLCJhbGc...",
-  "access": "eyJ0eXAiOiJKV1QiLCJhbGc..."
-}
+{ "refresh": "eyJ0eXAiOiJKV1QiLCJhbGc...", "access": "eyJ0eXAiOiJKV1QiLCJhbGc..." }
 ```
 
-Error examples (400):
+Error examples (400): invalid or expired challenge token; invalid TOTP code; invalid backup code, and both or neither otp_code and backup_code is provided in the same request.
 
-- Invalid or expired challenge token
-- Invalid TOTP code
-- Invalid backup code
-- TOTP not enabled for user (fallback check)
+#### `POST /api/jwt/refresh/`
 
-#### POST /api/jwt/refresh/
-
-Refresh an expired access token using a valid refresh token.
+Refreshes an expired access token using a valid refresh token.
 
 Request body:
 
 ```json
-{
-  "refresh": "eyJ0eXAiOiJKV1QiLCJhbGc..."
-}
+{ "refresh": "eyJ0eXAiOiJKV1QiLCJhbGc..." }
 ```
 
 Success response (200):
 
 ```json
-{
-  "access": "eyJ0eXAiOiJKV1QiLCJhbGc...",
-  "refresh": "eyJ0eXAiOiJKV1QiLCJhbGc..." // New refresh token if rotation enabled
-}
+{ "access": "eyJ0eXAiOiJKV1QiLCJhbGc...", "refresh": "eyJ0eXAiOiJKV1QiLCJhbGc..." }
 ```
 
-#### POST /api/jwt/verify/
+#### `POST /api/jwt/verify/`
 
-Verify the validity of an access or refresh token.
+Verifies the validity of an access or refresh token.
 
 Request body:
 
 ```json
-{
-  "token": "eyJ0eXAiOiJKV1QiLCJhbGc..."
-}
+{ "token": "eyJ0eXAiOiJKV1QiLCJhbGc..." }
 ```
 
-Success response (200):
+Success response (200): an empty body indicates a valid token.
 
-```json
-{} // Empty response indicates valid token
-```
+## Email Templates
 
-Error examples (401):
+Both recovery emails are rendered from a single Django template per email, split into named blocks rather than separate subject/body files:
 
-- Token expired
-- Token blacklisted (if using token blacklist)
-- Invalid token signature
+| Block                   | Used for                                                               |
+| ----------------------- | ---------------------------------------------------------------------- |
+| `{% block subject %}`   | Email subject line                                                     |
+| `{% block text_body %}` | Plain-text body (always attached)                                      |
+| `{% block html_body %}` | HTML alternative (attached if both bodies render to non-empty content) |
+
+Override either template by placing a file at the same relative path earlier in your template loader's search order, or by pointing `TOTP_RECOVERY_EMAIL_TEMPLATE` / `TOTP_DISABLED_EMAIL_TEMPLATE` at a different path entirely. Available context variables:
+
+- `totp_recovery.html`: `site_name`, `protocol`, `domain`, `url`, `user`
+- `totp_disabled.html`: `site_name`, `user`
+
+`EMAIL_BACKEND` is read from your own Django settings as usual - django-totp doesn't configure one for you, so use the console or file-based backend in development and a real transactional backend in production.
 
 ## Signals
 
-django-totp provides the following signals for monitoring and custom logic:
+django-totp sends the following signals via `send_robust`, so a failing receiver never breaks the request itself:
 
-- `totp_created`: Sent after a new TOTP enrollment is created.
-- `totp_disabled`: Sent after a TOTP enrollment is disabled.
-- `backup_codes_rotated`: Sent after backup codes are rotated.
-- `totp_login_success`: Sent after a successful TOTP verification during login.
-- `non_totp_login_success`: Sent after a successful login without TOTP (for users without TOTP enabled).
+- `totp_created`: sent after a new TOTP enrollment is confirmed.
+- `totp_disabled`: sent after TOTP is disabled, whether by the user directly or via account recovery.
+- `backup_codes_rotated`: sent after backup codes are rotated.
+- `totp_login_succeeded`: sent after a successful 2FA verification (TOTP code or backup code) during login.
+- `non_totp_login_succeeded`: sent after a successful login for a user who doesn't have TOTP enabled.
+- `totp_recovery_succeeded`: sent after a successful account recovery, immediately before `totp_disabled` fires for the same request.
 
 ```python
 # example signal handler
@@ -550,63 +496,47 @@ def handle_totp_created(sender, request, user, **kwargs):
     print(f"TOTP created for user: {user.username}")
 ```
 
+## Django Admin
+
+Registering `django_totp` gives you an admin view for the `Totp` model out of the box, with no extra wiring. It lists each user's email, username, and a live `used/total` backup-code count, and shows backup codes inline. Both the TOTP secret and every backup code are masked in the admin (only the first four encrypted characters are shown) - the underlying encrypted values are never exposed, and there's no way to retrieve a plaintext secret or code through the admin.
+
 ## Integrating 2FA Into Login Flow
 
-Typical 2-step login flow:
+Typical two-step login flow:
 
-1. Validate username/password
-2. If user has TOTP enabled, issue short-lived signed challenge token
-3. Ask user for TOTP code (or backup code)
-4. Verify code
-5. Issue final session/JWT only after successful 2FA verification
+1. Validate username/password via `/api/jwt/create/`.
+2. If the user has TOTP enabled, the response carries a short-lived signed challenge token instead of tokens.
+3. Prompt the user for a TOTP code or backup code.
+4. Submit it, along with the challenge token, to `/api/jwt/totp/verify/`.
+5. Issue final JWTs only after that verification succeeds.
+
+## Integrating Account Recovery
+
+Typical recovery flow for a user who has lost their TOTP device:
+
+1. The user submits their email to `/api/totp/recovery/`. The response is identical whether or not the account exists or has TOTP enabled, so the frontend should show the same message either way.
+2. If eligible, the user receives an email containing a link built from `TOTP_RECOVERY_CONFIRM_URL`, pointed at your frontend.
+3. Your frontend's recovery page extracts `uid` and `token` from the URL and prompts for the account's current password.
+4. The frontend submits `uid`, `token`, and `password` to `/api/totp/recovery_confirm/`.
+5. On success, TOTP is disabled on the account, a confirmation email is sent, and the user can log in normally (without 2FA) and re-enroll a new device.
 
 ## Security and Production Checklist
 
-### Configure Encryption Key Correctly
+### Configure the Encryption Key Correctly
 
-`TOTP_ENCRYPTION_KEY` is used to encrypt stored TOTP secrets and backup codes.
+`TOTP_ENCRYPTION_KEY` encrypts every stored TOTP secret and backup code.
 
-Recommendations:
-
-- Store the key in environment variables or a secure secret manager.
-- Generate the key once and reuse it across deployments.
-- Never hardcode the key in source code or commit it to Git.
-
-Generate a Fernet key:
-
-```bash
-python -c "from django_totp.encryption import generate_fernet_key; print(generate_fernet_key())"
-```
-
-Important:
-
-- Do NOT generate a new key on every application start.
-- Do NOT change the key after users have enrolled in TOTP unless you intentionally want to invalidate existing encrypted TOTP data.
-- Changing the key later makes previously encrypted TOTP secrets and backup codes unreadable.
+- Store it in an environment variable or a secret manager, never in source control.
+- Generate it once and reuse the same value across deployments and restarts.
+- Do not rotate it after users have enrolled unless you intend to invalidate all existing encrypted data - rotation makes previously encrypted secrets and backup codes permanently unreadable.
 
 ### Use HTTPS in Production
 
-Always serve authentication endpoints over HTTPS.
-
-This includes:
-
-- TOTP setup endpoints
-- JWT authentication endpoints
-- TOTP verification endpoints
-
-Never expose OTP codes, challenge tokens, or JWT tokens over plain HTTP connections.
+Serve every authentication-related endpoint over HTTPS - TOTP setup, recovery, and JWT endpoints alike. Never expose OTP codes, challenge tokens, recovery links, or JWTs over plain HTTP. Set `PROTOCOL = "https"` so recovery links reflect this too.
 
 ### Configure Throttling
 
-Enable strict throttling for authentication-related endpoints to reduce brute-force attempts.
-
-Recommended endpoints:
-
-- Login endpoints
-- TOTP verification endpoints
-- Backup code verification endpoints
-
-Example:
+Keep `TOTP_THROTTLE_RATE` strict for both login and recovery surfaces, since both are realistic targets for brute-force and enumeration attempts:
 
 ```python
 TOTP_THROTTLE_RATE = "5/minute"
@@ -614,167 +544,111 @@ TOTP_THROTTLE_RATE = "5/minute"
 
 ### Handle Backup Codes Securely
 
-Backup codes are recovery credentials and should be treated like passwords.
-
-Recommendations:
-
-- Show backup codes only once during generation or rotation.
-- Ask users to securely store backup codes.
-- Never log plaintext backup codes.
-- Never expose backup codes in debug responses or monitoring systems.
+Backup codes are recovery credentials and should be treated like passwords: show them only once, at generation or rotation time, ask users to store them securely, and never log or expose them in plaintext anywhere - debug responses, monitoring, or error traces included.
 
 ### Handle OTP Codes Securely
 
-Recommendations:
-
-- Never log OTP codes.
-- Never store submitted OTP codes.
-- Avoid exposing OTP values in debugging tools, logs, or error traces.
+Never log a submitted OTP code, never persist it, and keep it out of debugging tools and error traces.
 
 ### Configure Challenge Token Expiry Carefully
 
-`TOTP_TOKEN_MAX_AGE` controls how long temporary challenge tokens remain valid during the 2FA login flow.
+`TOTP_TOKEN_MAX_AGE` controls how long the 2FA login challenge token stays valid (default `120` seconds). Keep this short; there's little reason to extend it significantly in production.
 
-Default:
+### Configure the Token Salt Before Production
 
-```python
-TOTP_TOKEN_MAX_AGE = 120
-```
+`TOTP_TOKEN_SALT` signs the 2FA login challenge token. Change the default value before going live, then keep it stable - changing it later invalidates every challenge token currently in flight (which only matters for the few seconds a user is mid-login, so this is low-risk to rotate if needed).
 
-Recommendations:
+### Configure Recovery Email Settings Correctly
 
-- Keep expiration times short in production.
-- Avoid excessively large expiration windows.
-
-### Configure Token Salt Before Production
-
-`TOTP_TOKEN_SALT` is used when generating signed temporary challenge tokens.
-
-Default:
-
-```python
-TOTP_TOKEN_SALT = "django-totp-token-salt"
-```
-
-Recommendations:
-
-- Change the default value before production deployment.
-- Keep the value stable after deployment.
-- Don't hardcode the salt in source code if possible.
-
-Important:
-
-- Changing the salt later invalidates previously issued challenge tokens.
+Point `DOMAIN` and `PROTOCOL` at your actual frontend, not at the Django backend, so the link inside the recovery email lands on a page that can read `uid`/`token` and submit them. Recovery requires the user's current password in addition to the link, but it's still worth treating recovery emails with the same care as password-reset emails.
 
 ### Keep Dependencies Updated
 
-Keep authentication and security-related dependencies updated regularly.
-
-Recommended packages to monitor:
-
-- Django
-- cryptography
-- pyotp
-- djangorestframework
-- djangorestframework-simplejwt
-
-Apply security updates regularly in production environments.
+Apply security updates promptly for Django, `cryptography`, `pyotp`, `djangorestframework`, and `djangorestframework-simplejwt`.
 
 ## Troubleshooting
 
-### ImproperlyConfigured: TOTP_ENCRYPTION_KEY must be set
+### `ImproperlyConfigured: TOTP_ENCRYPTION_KEY must be set`
 
-Cause:
+Cause: missing or invalid Fernet key.
 
-- Missing or invalid Fernet key
+Fix: generate a valid Fernet key, set `TOTP_ENCRYPTION_KEY` in the environment, and restart the application.
 
-Fix:
+### Confirm endpoint always returns "Invalid TOTP code"
 
-1. Generate a valid Fernet key
-2. Set TOTP_ENCRYPTION_KEY in environment
-3. Restart app processes
+Possible causes: device clock drift, the wrong issuer/account was scanned, or the code was submitted after it expired.
 
-### Confirm endpoint always returns Invalid TOTP code
-
-Cause candidates:
-
-- Device clock drift
-- Wrong issuer/account scanned
-- Code copied late/expired
-
-Fixes:
-
-- Ensure server time is synchronized (NTP)
-- Re-run enrollment create and rescan QR
-- Submit current active code from authenticator app
+Fixes: make sure the server's clock is synchronized via NTP; re-run enrollment and rescan the QR code; submit the currently active code from the authenticator app.
 
 ### Backup code rejected
 
-Cause:
+Cause: the code was already used (each backup code is one-time-use), or there's a copy/paste whitespace mismatch.
 
-- Backup code already used (one-time)
-- Input mismatch due to copy/paste/whitespace issues
+Fix: rotate backup codes and redistribute them securely.
 
-Fix:
+### Recovery link is invalid or has expired
 
-- Rotate backup codes and securely redistribute
+Possible causes: the link is older than Django's `PASSWORD_RESET_TIMEOUT` (3 days by default), the account's password changed after the link was issued, or the link has already been used once.
+
+Fix: request a new recovery email via `/api/totp/recovery/`.
 
 ## Data Model
 
-django_totp creates two models:
+django_totp defines two models:
 
-- Totp
-  - user (one-to-one with AUTH_USER_MODEL)
-  - secret_key (encrypted)
-  - created_at
-- BackupCode
-  - totp (foreign key)
-  - code (encrypted)
-  - is_used
-  - created_at
+- `Totp`
+  - `user` - one-to-one with `AUTH_USER_MODEL`
+  - `secret_key` - encrypted
+  - `created_at`
+- `BackupCode`
+  - `totp` - foreign key to `Totp`
+  - `code` - encrypted
+  - `is_used`
+  - `created_at`
 
 ## Public Python API
 
-Useful helpers you can import directly:
+Helpers you can import directly, for building custom flows on top of the same primitives the bundled views use:
 
-- django_totp.auth
-  - is_totp_enabled(user)
-  - generate_challenge_token(user)
-  - verify_challenge_token(token)
-  - get_user_from_challenge_token(token)
-- django_totp.totp
-  - generate_totp_secret()
-  - verify_totp_code(user, input_code)
-  - create_totp_setup(user)
-  - confirm_totp_setup(user, input_code)
-  - disable_totp(user)
-- django_totp.backup_code_utils
-  - store_backup_codes(user, codes)
-  - verify_backup_code(user, input_code)
-  - rotate_backup_codes(user)
-- django_totp.encryption
-  - generate_fernet_key()
-  - resolve_fernet_key(default=None)
-  - encrypt(value)
-  - decrypt(value)
+- `django_totp.auth`
+  - `is_totp_enabled(user)`
+  - `generate_challenge_token(user)`
+  - `verify_challenge_token(token)`
+  - `get_user_from_challenge_token(token)`
+- `django_totp.totp`
+  - `generate_totp_secret()`
+  - `verify_totp_code(user, input_code)`
+  - `create_totp_setup(user)`
+  - `confirm_totp_setup(user, input_code)`
+  - `disable_totp(user)`
+- `django_totp.backup_code_utils`
+  - `store_backup_codes(user, codes)`
+  - `verify_backup_code(user, input_code)`
+  - `rotate_backup_codes(user)`
+- `django_totp.email`
+  - `TotpRecoveryEmail(request, context)`
+  - `TotpDisabledEmail(request, context)`
+- `django_totp.email_utils`
+  - `encode_uid(pk)`
+  - `decode_uid(uid)`
+- `django_totp.encryption`
+  - `generate_fernet_key()`
+  - `resolve_fernet_key(default=None)`
+  - `encrypt(value)`
+  - `decrypt(value)`
 
 ## Interactive Helper Tools
 
-The following utilities are available for development, debugging, and response inspection:
+Utilities for development, debugging, and response inspection:
 
-- **SVG Viewer**  
-  Render and inspect SVG payloads returned by TOTP enrollment (create) endpoints.
+- **SVG Viewer** - render and inspect the SVG payload returned by the TOTP `create` endpoint.
+- **JSON to TXT Converter** - convert backup-code JSON responses into a plain-text downloadable file.
 
-- **JSON to TXT Converter**  
-  Convert backup code JSON responses into plain-text downloadable format.
-
-Tool URL:
-
-https://django-totp-helper.pages.dev/
+Available at: https://django-totp-helper.pages.dev/
 
 ## Contributing
 
-Contributions are welcome! Please open issues for bugs or feature requests, and submit pull requests for any improvements.
+Contributions are welcome. Please open an issue for bugs or feature requests, and submit pull requests for improvements.
 
 ## Maintainers
 
@@ -784,4 +658,4 @@ Contributions are welcome! Please open issues for bugs or feature requests, and 
 
 ## License
 
-MIT License.
+MIT License. See [LICENSE](LICENSE) for details.
