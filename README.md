@@ -644,7 +644,7 @@ Utilities for development, debugging, and response inspection:
 - **SVG Viewer** - render and inspect the SVG payload returned by the TOTP `create` endpoint.
 - **JSON to TXT Converter** - convert backup-code JSON responses into a plain-text downloadable file.
 
-Available at: https://django-totp-helper.pages.dev/
+Available at: [django-totp-helper.pages.dev](https://django-totp-helper.pages.dev/)
 
 ## Contributing
 
