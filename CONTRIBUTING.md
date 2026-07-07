@@ -12,7 +12,7 @@ This project is governed by our [Code of Conduct](CODE_OF_CONDUCT.md). By partic
 
 ```bash
 # Clone your fork
-git clone https://github.com/krsahil8825/django-totp.git
+git clone https://github.com/packagesphere/django-totp.git
 cd django-totp
 
 uv sync
@@ -80,6 +80,6 @@ def verify_code(secret: str, code: str) -> bool:
 
 - Join our discussions on GitHub
 - Check existing issues first
-- Email: krsahil8825@gmail.com
+- Email: contact@krsahil.co.in
 
 Thank you for contributing! 🎉

@@ -2,9 +2,9 @@
 name = "django-totp"
 dynamic = ["version"]
 
-authors = [{ name = "Kumar Sahil", email = "krsahil8825@gmail.com" }]
+authors = [{ name = "Kumar Sahil", email = "contact@krsahil.co.in" }]
 
-maintainers = [{ name = "Kumar Sahil", email = "krsahil8825@gmail.com" }]
+maintainers = [{ name = "Kumar Sahil", email = "contact@krsahil.co.in" }]
 
 description = "Production-ready TOTP (Time-based One-Time Password) support for Django and Django REST Framework."
 readme = "README.md"
@@ -50,10 +50,10 @@ classifiers = [
 ]
 
 [project.urls]
-Homepage = "https://krsahil8825.github.io/django-totp/"
-Documentation = "https://krsahil8825.github.io/django-totp/"
-Repository = "https://github.com/krsahil8825/django-totp"
-Issues = "https://github.com/krsahil8825/django-totp/issues/"
+Homepage = "https://packagesphere.github.io/django-totp/"
+Documentation = "https://packagesphere.github.io/django-totp/"
+Repository = "https://github.com/packagesphere/django-totp"
+Issues = "https://github.com/packagesphere/django-totp/issues/"
 
 [build-system]
 requires = ["setuptools>=68", "wheel", "setuptools-scm>=8"]
